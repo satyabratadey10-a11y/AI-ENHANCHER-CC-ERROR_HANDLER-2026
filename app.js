@@ -32,21 +32,20 @@ function showAlert(type, msg) {
 }
 
 function sysHalt(msg) {
-    document.getElementById('progressContainer').style.display = 'none';
-    document.getElementById('errTechnical').innerText = msg;
-    document.getElementById('systemErrorModal').style.display = 'flex';
+    const p = document.getElementById('progressContainer'); if(p) p.style.display = 'none';
+    const err = document.getElementById('errTechnical'); if(err) err.innerText = msg;
+    const mod = document.getElementById('systemErrorModal'); if(mod) mod.style.display = 'flex';
 }
+
 window.onerror = (m) => { if(!m.includes("Worker")) sysHalt(m); return true; };
 
-// 3. Slider Track UI Math
 function updateTrack(input) {
     const min = parseFloat(input.min) || -100; const max = parseFloat(input.max) || 100;
     const val = parseFloat(input.value); const pct = ((val - min) / (max - min)) * 100;
     input.style.setProperty('--pct', pct + '%');
 }
-document.querySelectorAll('input[type="range"]').forEach(i => updateTrack(i));
 
-// 4. Initialize Web Worker Properly (NO BLOB)
+// 3. Worker Initialization
 document.addEventListener('DOMContentLoaded', () => {
     try {
         imageWorker = new Worker('worker.js');
@@ -55,7 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if(e.data.type === 'fatal') sysHalt(e.data.msg);
             else if(e.data.type === 'progress') {
                 document.getElementById('progressFill').style.width = e.data.p + '%';
-                document.getElementById('progressFill').textContent = e.data.p + '%';
             }
             else if(e.data.type === 'done') {
                 const cvs = document.createElement('canvas'); cvs.width = window.w; cvs.height = window.h;
@@ -76,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSlider(); genFilters();
 });
 
-// 5. Drag/Drop & File Input
+// 4. File Upload Logic (THIS IS THE FIX)
 const zone = document.getElementById('uploadZone');
 ['dragenter','dragover'].forEach(e => zone.addEventListener(e, ev => { ev.preventDefault(); zone.classList.add('dragover'); }));
 ['dragleave','drop'].forEach(e => zone.addEventListener(e, ev => { ev.preventDefault(); zone.classList.remove('dragover'); }));
@@ -92,12 +90,15 @@ document.getElementById('fileInput').onchange = (e) => {
     r.onload = (evt) => {
         document.getElementById('uploadedImage').src = evt.target.result;
         document.getElementById('baOriginal').src = evt.target.result;
+        
         document.getElementById('uploadPrompt').style.display = 'none';
         document.getElementById('mediaPreview').style.display = 'block';
         document.getElementById('uploadSection').classList.add('has-file');
+        
         document.getElementById('ccSection').style.display = 'grid';
         document.getElementById('settingsSection').style.display = 'grid';
         document.getElementById('actionButtons').style.display = 'flex';
+        
         showAlert('info', '📁 Image loaded — ready to process');
     }; r.readAsDataURL(f);
 };
@@ -110,14 +111,21 @@ function deleteFile(e) {
     document.getElementById('mediaPreview').style.display = 'none';
     document.getElementById('fileInput').value = '';
     ['ccSection','settingsSection','actionButtons','previewSection','analysisPanel','progressContainer'].forEach(id => document.getElementById(id).style.display = 'none');
-    Object.keys(settings).forEach(k => updateValue(k, 0));
+    
+    Object.keys(settings).forEach(k => {
+        settings[k] = 0;
+        const input = document.getElementById(k);
+        if(input) { input.value = 0; updateTrack(input); }
+        const valEl = document.getElementById(k+'Value');
+        if(valEl) valEl.innerText = '0';
+    });
+    document.querySelectorAll('.cc-filter-card').forEach(c => c.classList.remove('active'));
     showAlert('info', '🗑️ Image cleared.');
 }
 
-// 6. Sliders & Filters
+// 5. Controls & Processing
 function updateValue(id, val) {
     document.getElementById(id+'Value').innerText = val; settings[id] = parseInt(val);
-    const input = document.getElementById(id); if(input) { input.value = val; updateTrack(input); }
     document.querySelectorAll('.cc-filter-card').forEach(x=>x.classList.remove('active')); currentFilter = null;
 }
 
@@ -133,7 +141,12 @@ function genFilters() {
         const card = document.createElement('div'); card.className = 'cc-filter-card'; card.style.borderColor = '#30d158';
         card.onclick = () => {
             document.querySelectorAll('.cc-filter-card').forEach(x=>x.classList.remove('active')); card.classList.add('active'); currentFilter = null;
-            Object.keys(custom[name]).forEach(k => updateValue(k, custom[name][k]));
+            Object.keys(custom[name]).forEach(k => {
+                settings[k] = custom[name][k];
+                const input = document.getElementById(k);
+                if(input) { input.value = settings[k]; updateTrack(input); }
+                document.getElementById(k+'Value').innerText = settings[k];
+            });
             showAlert('success', `⚙️ Loaded preset: ${name}`);
         };
         card.innerHTML = `<div class="cc-filter-preview" style="background:linear-gradient(135deg, #30d158, #00f5ff)"></div><div style="font-weight:bold;">⭐ ${name}</div>`; c.appendChild(card);
@@ -147,7 +160,6 @@ function saveCustomPreset() {
     genFilters(); showAlert('success', '💾 Preset saved to browser!');
 }
 
-// 7. Actions (Analyze, Auto, Process)
 function analyzeImage() {
     if(!uploadedFile) return; const img = document.getElementById('uploadedImage');
     document.getElementById('analysisPanel').style.display = 'block';
@@ -160,7 +172,13 @@ function analyzeImage() {
 
 function runAutoEnhance() {
     currentFilter = 'ULTRA HDR';
-    ['brightness','contrast','saturation','sharpness'].forEach(k => updateValue(k, Math.floor(Math.random()*15)+5));
+    ['brightness','contrast','saturation','sharpness'].forEach(k => {
+        const val = Math.floor(Math.random()*15)+5;
+        settings[k] = val;
+        const input = document.getElementById(k);
+        if(input) { input.value = val; updateTrack(input); }
+        document.getElementById(k+'Value').innerText = val;
+    });
     document.querySelectorAll('.cc-filter-card').forEach((el, i) => el.classList.toggle('active', defaultFilters[i]?.name === 'ULTRA HDR'));
     setTimeout(processImage, 500);
 }
@@ -169,10 +187,10 @@ function processImage() {
     if(!uploadedFile) return;
     document.getElementById('processBtn').disabled = true;
     document.getElementById('progressContainer').style.display = 'flex';
-    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressFill').style.width = '2%';
     
     const img = document.getElementById('uploadedImage');
-    const mult = parseInt(document.getElementById('upscaleMultiplier').value);
+    const mult = parseInt(document.getElementById('upscaleMultiplier').value) || 4;
     let w = img.naturalWidth * mult; let h = img.naturalHeight * mult;
     if(w*h > MAX_MEGAPIXELS) { const r = Math.sqrt(MAX_MEGAPIXELS/(w*h)); w=Math.floor(w*r); h=Math.floor(h*r); showAlert('info', '⚠️ Scale optimized for mobile RAM.'); }
     
