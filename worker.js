@@ -40,7 +40,7 @@ self.onmessage = function(e) {
 
             data[i] = Math.max(0, Math.min(255, r)); data[i+1] = Math.max(0, Math.min(255, g)); data[i+2] = Math.max(0, Math.min(255, b)); 
 
-            if (i % 800000 === 0) self.postMessage({ type: 'progress', percent: Math.floor((i/(totalPixels*4)) * 90) }); 
+            if (i % 800000 === 0) self.postMessage({ type: 'progress', p: Math.floor((i/(totalPixels*4)) * 90) }); 
         } 
 
         let finalSharpness = settings.sharpness;
@@ -61,7 +61,7 @@ self.onmessage = function(e) {
                         data[idx + c] = Math.max(0, Math.min(255, center + edge)); 
                     } 
                 } 
-                if (y % Math.floor(height/10) === 0) self.postMessage({ type: 'progress', percent: 80 + Math.floor((y/height) * 20) }); 
+                if (y % Math.floor(height/10) === 0) self.postMessage({ type: 'progress', p: 80 + Math.floor((y/height) * 20) }); 
             } 
         } 
         self.postMessage({ type: 'done', buffer: data.buffer }, [data.buffer]); 
