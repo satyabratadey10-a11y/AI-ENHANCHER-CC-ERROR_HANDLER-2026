@@ -1,215 +1,148 @@
-'use strict';
+// --- HTML STRUCTURE INJECTION ---
+document.body.insertAdjacentHTML('beforeend', `
+<div id="toast"></div>
+<header><div class="logo">APEX AI <span class="badge">ULTRA</span></div><button class="btn-sec" onclick="location.reload()">NEW</button></header>
+<div id="workspace">
+    <div id="emptyState">
+        <h2 style="color:#333;">NO IMAGE</h2>
+        <label for="fileInput" class="upload-btn">📁 OPEN STUDIO</label>
+        <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <canvas id="mainCanvas"></canvas>
+</div>
+<div id="sysLoader"><div class="spinner"></div><h3 style="margin-top:20px; color:#00f5ff">PROCESSING</h3><p id="progressTxt" style="color:#666">0%</p></div>
+<div id="controls">
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('tab-ai', this)">✨ AI TOOLS</div>
+        <div class="tab" onclick="switchTab('tab-adj', this)">🎚 ADJUST</div>
+        <div class="tab" onclick="switchTab('tab-zeiss', this)">🔵 ZEISS</div>
+        <div class="tab" onclick="switchTab('tab-save', this)">💾 EXPORT</div>
+    </div>
+    <div id="tab-ai" class="panel-content active">
+        <div class="grid-2">
+            <div class="tool-card" onclick="runWorker('removeBg')"><span>✂️</span><label>Remove BG</label></div>
+            <div class="tool-card" onclick="runWorker('magic')"><span>🪄</span><label>Magic Eraser</label></div>
+            <div class="tool-card" onclick="runWorker('color')"><span>🎨</span><label>Colorize</label></div>
+            <div class="tool-card" onclick="runWorker('face')"><span>😀</span><label>Face Fix</label></div>
+        </div>
+    </div>
+    <div id="tab-adj" class="panel-content">
+        <div class="slider-row"><div class="slider-head"><span>EXPOSURE</span><span id="v-exp" class="slider-val">0</span></div><input type="range" id="exp" min="-100" max="100" value="0" oninput="updateSet('exp',this.value)"></div>
+        <div class="slider-row"><div class="slider-head"><span>CONTRAST</span><span id="v-con" class="slider-val">0</span></div><input type="range" id="con" min="-100" max="100" value="0" oninput="updateSet('con',this.value)"></div>
+        <div class="slider-row"><div class="slider-head"><span>SATURATION</span><span id="v-sat" class="slider-val">0</span></div><input type="range" id="sat" min="-100" max="100" value="0" oninput="updateSet('sat',this.value)"></div>
+        <div class="slider-row"><div class="slider-head"><span>SHARPNESS</span><span id="v-shp" class="slider-val">0</span></div><input type="range" id="shp" min="0" max="100" value="0" oninput="updateSet('shp',this.value)"></div>
+    </div>
+    <div id="tab-zeiss" class="panel-content">
+        <div class="grid-3">
+            <div class="tool-card" onclick="applyPreset('zeiss')"><label>ZEISS T*</label></div>
+            <div class="tool-card" onclick="applyPreset('portrait')"><label>Portrait</label></div>
+            <div class="tool-card" onclick="applyPreset('cine')"><label>Cinema</label></div>
+            <div class="tool-card" onclick="applyPreset('bw')"><label>Leica B&W</label></div>
+            <div class="tool-card" onclick="applyPreset('vivid')"><label>Vivid+</label></div>
+            <div class="tool-card" onclick="applyPreset('pure')"><label>Pure 8K</label></div>
+        </div>
+    </div>
+    <div id="tab-save" class="panel-content">
+        <div class="slider-row">
+            <div class="slider-head"><span>UPSCALE</span><span class="slider-val" id="scaleDisplay">4x</span></div>
+            <select id="scaleSel" style="width:100%; background:#000; color:#fff; padding:8px; border:1px solid #333;"><option value="2">2x</option><option value="4" selected>4x</option><option value="8">8x</option></select>
+        </div>
+        <button class="btn btn-main" style="width:100%; padding:15px;" onclick="renderFinal()">RENDER & DOWNLOAD</button>
+    </div>
+    <div class="actions"><button class="btn btn-sec" onclick="runWorker('auto')">✨ AUTO</button><button class="btn btn-main" onclick="runWorker('preview')">APPLY</button></div>
+</div>
+`);
 
-// 1. Particle System Background
-const canvas = document.getElementById('particleCanvas');
+// --- LOGIC ---
+const state = { file: null, img: new Image(), settings: { exp:0, con:0, sat:0, shp:0 }, view: { x:0, y:0, scale:1, isDrag:false, lx:0, ly:0 } };
+const canvas = document.getElementById('mainCanvas');
 const ctx = canvas.getContext('2d');
-let W, H, particles = [];
-function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
-window.addEventListener('resize', resize); resize();
-const colors = ['rgba(0,245,255,', 'rgba(191,90,242,', 'rgba(255,55,95,', 'rgba(48,209,88,'];
-for(let i = 0; i < 60; i++){ particles.push({ x: Math.random() * 1000, y: Math.random() * 800, r: Math.random() * 1.5 + 0.3, dx: (Math.random() - 0.5) * 0.3, dy: (Math.random() - 0.5) * 0.3 - 0.1, c: colors[Math.floor(Math.random() * colors.length)], o: Math.random() * 0.5 + 0.1, life: Math.random() }); }
-function draw(){ ctx.clearRect(0, 0, W, H); particles.forEach(p => { p.x += p.dx; p.y += p.dy; p.life += 0.004; const op = p.o * (0.5 + 0.5 * Math.sin(p.life * Math.PI)); if(p.y < -10) p.y = H + 10; if(p.x < -10) p.x = W + 10; if(p.x > W + 10) p.x = -10; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = p.c + op + ')'; ctx.fill(); }); requestAnimationFrame(draw); }
-draw();
 
-// 2. Globals & Utilities
-let uploadedFile = null; let currentFilter = null; let processedUrl = null; let imageWorker = null;
-const MAX_MEGAPIXELS = 12000000;
-const settings = { brightness: 0, contrast: 0, saturation: 0, exposure: 0, temperature: 0, tint: 0, vibrance: 0, sharpness: 0 };
-
-const defaultFilters = [
-    { name: '4K CC', gradient: 'linear-gradient(135deg, #00c6ff, #0072ff)' },
-    { name: 'HDR CC', gradient: 'linear-gradient(135deg, #f12711, #f5af19)' },
-    { name: 'ULTRA HD', gradient: 'linear-gradient(135deg, #11998e, #38ef7d)' },
-    { name: 'ULTRA HDR', gradient: 'linear-gradient(135deg, #fc4a1a, #f7b733)' },
-    { name: '8K CC', gradient: 'linear-gradient(135deg, #8A2387, #E94057)' },
-    { name: 'Cinematic', gradient: 'linear-gradient(135deg, #1e3c72, #2a5298)' }
-];
-
-function showAlert(type, msg) {
-    ['Success', 'Error', 'Info'].forEach(t => { const el = document.getElementById('alert'+t); if(el) el.style.display = 'none'; });
-    const el = document.getElementById('alert' + type.charAt(0).toUpperCase() + type.slice(1));
-    if(el) { el.textContent = msg; el.style.display = 'block'; setTimeout(() => el.style.display='none', 4000); }
-}
-
-function sysHalt(msg) {
-    const p = document.getElementById('progressContainer'); if(p) p.style.display = 'none';
-    const err = document.getElementById('errTechnical'); if(err) err.innerText = msg;
-    const mod = document.getElementById('systemErrorModal'); if(mod) mod.style.display = 'flex';
-}
-
-window.onerror = (m) => { if(!m.includes("Worker")) sysHalt(m); return true; };
-
-function updateTrack(input) {
-    const min = parseFloat(input.min) || -100; const max = parseFloat(input.max) || 100;
-    const val = parseFloat(input.value); const pct = ((val - min) / (max - min)) * 100;
-    input.style.setProperty('--pct', pct + '%');
-}
-
-// 3. Worker Initialization
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        imageWorker = new Worker('worker.js');
-        imageWorker.onerror = (e) => sysHalt("Worker crashed: " + e.message);
-        imageWorker.onmessage = (e) => {
-            if(e.data.type === 'fatal') sysHalt(e.data.msg);
-            else if(e.data.type === 'progress') {
-                document.getElementById('progressFill').style.width = e.data.p + '%';
-            }
-            else if(e.data.type === 'done') {
-                const cvs = document.createElement('canvas'); cvs.width = window.w; cvs.height = window.h;
-                cvs.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(e.data.buffer), window.w, window.h), 0, 0);
-                processedUrl = cvs.toDataURL('image/' + document.getElementById('outputFormat').value);
-                
-                document.getElementById('progressContainer').style.display = 'none';
-                document.getElementById('previewSection').style.display = 'flex';
-                document.getElementById('baEnhanced').src = processedUrl;
-                document.getElementById('baEnhanced').style.clipPath = 'polygon(0 0, 50% 0, 50% 100%, 0 100%)';
-                document.getElementById('baHandle').style.left = '50%';
-                
-                document.getElementById('processBtn').disabled = false;
-                showAlert('success', '🎉 4K Processing Complete!');
-            }
-        };
-    } catch(err) { sysHalt("worker.js missing on server."); }
-    initSlider(); genFilters();
-});
-
-// 4. File Upload Logic (THIS IS THE FIX)
-const zone = document.getElementById('uploadZone');
-['dragenter','dragover'].forEach(e => zone.addEventListener(e, ev => { ev.preventDefault(); zone.classList.add('dragover'); }));
-['dragleave','drop'].forEach(e => zone.addEventListener(e, ev => { ev.preventDefault(); zone.classList.remove('dragover'); }));
-zone.addEventListener('drop', ev => {
-    const f = ev.dataTransfer.files[0]; if(!f || !f.type.startsWith('image/')) return;
-    const input = document.getElementById('fileInput'); const dt = new DataTransfer(); dt.items.add(f);
-    input.files = dt.files; input.dispatchEvent(new Event('change'));
-});
-
-document.getElementById('fileInput').onchange = (e) => {
-    const f = e.target.files[0]; if(!f) return; uploadedFile = f;
+// Upload
+document.getElementById('fileInput').addEventListener('change', e => {
+    const f = e.target.files[0]; if(!f) return;
+    state.file = f;
     const r = new FileReader();
-    r.onload = (evt) => {
-        document.getElementById('uploadedImage').src = evt.target.result;
-        document.getElementById('baOriginal').src = evt.target.result;
-        
-        document.getElementById('uploadPrompt').style.display = 'none';
-        document.getElementById('mediaPreview').style.display = 'block';
-        document.getElementById('uploadSection').classList.add('has-file');
-        
-        document.getElementById('ccSection').style.display = 'grid';
-        document.getElementById('settingsSection').style.display = 'grid';
-        document.getElementById('actionButtons').style.display = 'flex';
-        
-        showAlert('info', '📁 Image loaded — ready to process');
-    }; r.readAsDataURL(f);
+    r.onload = evt => {
+        state.img.src = evt.target.result;
+        state.img.onload = () => {
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('controls').style.display = 'flex';
+            canvas.style.display = 'block';
+            canvas.width = state.img.naturalWidth;
+            canvas.height = state.img.naturalHeight;
+            ctx.drawImage(state.img, 0, 0);
+            fitView();
+            showToast("✅ Ready");
+        }
+    };
+    r.readAsDataURL(f);
+});
+
+// Canvas View
+function fitView() {
+    const box = document.getElementById('workspace');
+    const sx = box.offsetWidth / canvas.width;
+    const sy = box.offsetHeight / canvas.height;
+    state.view.scale = Math.min(sx, sy) * 0.9;
+    state.view.x = (box.offsetWidth - canvas.width * state.view.scale) / 2;
+    state.view.y = (box.offsetHeight - canvas.height * state.view.scale) / 2;
+    updateTransform();
+}
+function updateTransform() { canvas.style.transform = `translate(${state.view.x}px, ${state.view.y}px) scale(${state.view.scale})`; }
+
+// UI
+window.switchTab = (id, el) => {
+    document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    el.classList.add('active');
+};
+window.updateSet = (k, v) => { document.getElementById('v-'+k).innerText = v; state.settings[k] = parseInt(v); };
+function showToast(msg) { const t=document.getElementById('toast'); t.innerText=msg; t.style.display='block'; setTimeout(()=>t.style.display='none', 2000); }
+
+// PRESETS
+const presets = { zeiss:{exp:-5,con:15,sat:10,shp:30}, portrait:{exp:10,con:5,sat:-5,shp:10}, cine:{exp:-10,con:20,sat:-20,shp:0}, bw:{exp:0,con:30,sat:-100,shp:20}, vivid:{exp:0,con:10,sat:40,shp:10}, pure:{exp:0,con:0,sat:0,shp:50} };
+window.applyPreset = (k) => {
+    const p = presets[k];
+    Object.keys(p).forEach(key => { state.settings[key] = p[key]; document.getElementById(key).value = p[key]; document.getElementById('v-'+key).innerText = p[key]; });
+    runWorker('preview');
+    showToast("Applied: " + k);
 };
 
-function deleteFile(e) {
-    if(e) e.preventDefault();
-    uploadedFile = null; processedUrl = null; currentFilter = null;
-    document.getElementById('uploadSection').classList.remove('has-file');
-    document.getElementById('uploadPrompt').style.display = 'flex';
-    document.getElementById('mediaPreview').style.display = 'none';
-    document.getElementById('fileInput').value = '';
-    ['ccSection','settingsSection','actionButtons','previewSection','analysisPanel','progressContainer'].forEach(id => document.getElementById(id).style.display = 'none');
+// WORKER & RENDER
+window.runWorker = (mode) => {
+    document.getElementById('sysLoader').style.display = 'flex';
+    const imgData = ctx.getImageData(0,0,canvas.width, canvas.height);
     
-    Object.keys(settings).forEach(k => {
-        settings[k] = 0;
-        const input = document.getElementById(k);
-        if(input) { input.value = 0; updateTrack(input); }
-        const valEl = document.getElementById(k+'Value');
-        if(valEl) valEl.innerText = '0';
-    });
-    document.querySelectorAll('.cc-filter-card').forEach(c => c.classList.remove('active'));
-    showAlert('info', '🗑️ Image cleared.');
-}
-
-// 5. Controls & Processing
-function updateValue(id, val) {
-    document.getElementById(id+'Value').innerText = val; settings[id] = parseInt(val);
-    document.querySelectorAll('.cc-filter-card').forEach(x=>x.classList.remove('active')); currentFilter = null;
-}
-
-function genFilters() {
-    const c = document.getElementById('ccFilters'); c.innerHTML = '';
-    defaultFilters.forEach(f => {
-        const card = document.createElement('div'); card.className = 'cc-filter-card';
-        card.onclick = () => { document.querySelectorAll('.cc-filter-card').forEach(x=>x.classList.remove('active')); card.classList.add('active'); currentFilter = f.name; showAlert('success', `🎨 ${f.name} selected!`); };
-        card.innerHTML = `<div class="cc-filter-preview" style="background:${f.gradient}"></div><div style="font-weight:bold;">${f.name}</div>`; c.appendChild(card);
-    });
-    const custom = JSON.parse(localStorage.getItem('apexPresets') || '{}');
-    Object.keys(custom).forEach(name => {
-        const card = document.createElement('div'); card.className = 'cc-filter-card'; card.style.borderColor = '#30d158';
-        card.onclick = () => {
-            document.querySelectorAll('.cc-filter-card').forEach(x=>x.classList.remove('active')); card.classList.add('active'); currentFilter = null;
-            Object.keys(custom[name]).forEach(k => {
-                settings[k] = custom[name][k];
-                const input = document.getElementById(k);
-                if(input) { input.value = settings[k]; updateTrack(input); }
-                document.getElementById(k+'Value').innerText = settings[k];
-            });
-            showAlert('success', `⚙️ Loaded preset: ${name}`);
-        };
-        card.innerHTML = `<div class="cc-filter-preview" style="background:linear-gradient(135deg, #30d158, #00f5ff)"></div><div style="font-weight:bold;">⭐ ${name}</div>`; c.appendChild(card);
-    });
-}
-
-function saveCustomPreset() {
-    const name = prompt("Name your preset:"); if(!name) return;
-    const p = JSON.parse(localStorage.getItem('apexPresets') || '{}');
-    p[name] = {...settings}; localStorage.setItem('apexPresets', JSON.stringify(p));
-    genFilters(); showAlert('success', '💾 Preset saved to browser!');
-}
-
-function analyzeImage() {
-    if(!uploadedFile) return; const img = document.getElementById('uploadedImage');
-    document.getElementById('analysisPanel').style.display = 'block';
-    document.getElementById('stat-res').textContent = `${img.naturalWidth}×${img.naturalHeight}`;
-    document.getElementById('stat-quality').textContent = Math.floor(78 + Math.random()*20) + '%';
-    document.getElementById('stat-depth').textContent = '24-bit';
-    document.getElementById('stat-ready').textContent = document.getElementById('upscaleMultiplier').value + 'x ✓';
-    showAlert('success', '🔍 Analysis complete!');
-}
-
-function runAutoEnhance() {
-    currentFilter = 'ULTRA HDR';
-    ['brightness','contrast','saturation','sharpness'].forEach(k => {
-        const val = Math.floor(Math.random()*15)+5;
-        settings[k] = val;
-        const input = document.getElementById(k);
-        if(input) { input.value = val; updateTrack(input); }
-        document.getElementById(k+'Value').innerText = val;
-    });
-    document.querySelectorAll('.cc-filter-card').forEach((el, i) => el.classList.toggle('active', defaultFilters[i]?.name === 'ULTRA HDR'));
-    setTimeout(processImage, 500);
-}
-
-function processImage() {
-    if(!uploadedFile) return;
-    document.getElementById('processBtn').disabled = true;
-    document.getElementById('progressContainer').style.display = 'flex';
-    document.getElementById('progressFill').style.width = '2%';
+    // CACHE BUSTER FOR WORKER
+    const worker = new Worker('worker.js?v=' + Date.now());
     
-    const img = document.getElementById('uploadedImage');
-    const mult = parseInt(document.getElementById('upscaleMultiplier').value) || 4;
-    let w = img.naturalWidth * mult; let h = img.naturalHeight * mult;
-    if(w*h > MAX_MEGAPIXELS) { const r = Math.sqrt(MAX_MEGAPIXELS/(w*h)); w=Math.floor(w*r); h=Math.floor(h*r); showAlert('info', '⚠️ Scale optimized for mobile RAM.'); }
+    worker.onmessage = e => {
+        if(e.data.type === 'done') {
+            const res = new ImageData(new Uint8ClampedArray(e.data.buffer), canvas.width, canvas.height);
+            ctx.putImageData(res, 0, 0);
+            document.getElementById('sysLoader').style.display = 'none';
+            showToast("Complete");
+        }
+    };
+    worker.postMessage({ mode: mode, buffer: imgData.data.buffer, width: canvas.width, height: canvas.height, s: state.settings }, [imgData.data.buffer]);
+};
+
+window.renderFinal = () => {
+    const scale = parseInt(document.getElementById('scaleSel').value);
+    if(canvas.width * scale * canvas.height * scale > 35000000) { alert("⚠️ Limited to safe res"); return; }
     
-    const cvs = document.createElement('canvas'); cvs.width = w; cvs.height = h;
-    const ctx = cvs.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.drawImage(img, 0, 0, w, h);
-    window.w = w; window.h = h;
-    imageWorker.postMessage({ buffer: ctx.getImageData(0,0,w,h).data.buffer, width: w, height: h, settings, filter: currentFilter }, [ctx.getImageData(0,0,w,h).data.buffer]);
-}
-
-function downloadResult() {
-    if(!processedUrl) return;
-    const a = document.createElement('a'); a.download = `apex-upscaled.${document.getElementById('outputFormat').value}`;
-    a.href = processedUrl; a.click();
-}
-
-function initSlider() {
-    const cont = document.getElementById('beforeAfterSlider'), over = document.getElementById('baEnhanced'), hndl = document.getElementById('baHandle');
-    let drag = false;
-    const slide = (x) => { let p = ((x - cont.getBoundingClientRect().left) / cont.offsetWidth) * 100; p = Math.max(0, Math.min(p, 100)); over.style.clipPath = `polygon(0 0, ${p}% 0, ${p}% 100%, 0 100%)`; hndl.style.left = `${p}%`; };
-    cont.onmousedown = cont.ontouchstart = () => drag = true; window.onmouseup = window.ontouchend = () => drag = false;
-    window.onmousemove = window.ontouchmove = (e) => { if(drag) slide(e.touches ? e.touches[0].clientX : e.clientX); };
-}
+    const finalCvs = document.createElement('canvas');
+    finalCvs.width = canvas.width * scale;
+    finalCvs.height = canvas.height * scale;
+    const fCtx = finalCvs.getContext('2d');
+    fCtx.imageSmoothingEnabled = true;
+    fCtx.imageSmoothingQuality = 'high';
+    fCtx.drawImage(canvas, 0, 0, finalCvs.width, finalCvs.height);
+    
+    const link = document.createElement('a');
+    link.download = 'APEX_Edit.jpg';
+    link.href = finalCvs.toDataURL('image/jpeg', 0.95);
+    link.click();
+};
