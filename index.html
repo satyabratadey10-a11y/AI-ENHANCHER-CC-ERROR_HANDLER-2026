@@ -4,236 +4,55 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>APEX AI — Cloud Studio</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=DM+Sans:wght@400;700&display=swap" rel="stylesheet"/>
-
 <style>
-/* --- 1. SYSTEM CORE --- */
-:root { --bg:#050505; --panel:#111; --border:#333; --neon:#00f5ff; --zeiss:#0072e3; }
-body { background:var(--bg); color:#fff; font-family:'DM Sans',sans-serif; height:100vh; margin:0; overflow:hidden; display:flex; flex-direction:column; }
-*,*::before,*::after { box-sizing:border-box; }
-
-/* --- 2. HEADER --- */
-header { padding:15px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:#0a0a0a; z-index:10; }
-.logo { font-family:'Orbitron'; font-weight:700; color:var(--neon); letter-spacing:1px; }
-.cloud-status { font-size:0.7em; color:#666; display:flex; align-items:center; gap:5px; }
-.dot { width:8px; height:8px; background:#333; border-radius:50%; }
-.dot.online { background:#00ff99; box-shadow:0 0 10px #00ff99; }
-
-/* --- 3. WORKSPACE --- */
-#workspace { flex:1; position:relative; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-canvas { box-shadow:0 0 50px rgba(0,0,0,0.5); max-width:100%; max-height:100%; }
-#emptyState { text-align:center; color:#444; }
-.upload-btn { padding:12px 30px; border:1px solid var(--border); border-radius:50px; color:var(--neon); font-family:'Orbitron'; cursor:pointer; background:rgba(0,245,255,0.05); }
-
-/* --- 4. CONTROLS --- */
-#controls { height:40vh; background:var(--panel); border-top:1px solid var(--border); display:none; flex-direction:column; z-index:20; }
-.tabs { display:flex; background:#000; border-bottom:1px solid var(--border); }
-.tab { flex:1; padding:12px; text-align:center; font-family:'Orbitron'; font-size:0.8em; color:#666; cursor:pointer; }
-.tab.active { color:var(--neon); border-bottom:2px solid var(--neon); background:#111; }
-.panel { flex:1; overflow-y:auto; padding:20px; display:none; }
-.panel.active { display:block; }
-
-/* --- 5. TOOLS --- */
-.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.card { background:#1a1a1a; border:1px solid var(--border); padding:15px; border-radius:10px; text-align:center; cursor:pointer; }
-.card:active { border-color:var(--neon); transform:scale(0.98); }
-.card i { font-size:1.5em; display:block; margin-bottom:5px; }
-.card span { font-size:0.8em; font-weight:bold; color:#ccc; }
-
-.slider-group { margin-bottom:15px; }
-.slider-label { display:flex; justify-content:space-between; font-size:0.8em; color:#888; margin-bottom:5px; font-family:'Orbitron'; }
-input[type=range] { width:100%; accent-color:var(--neon); }
-
-/* --- 6. UTILS --- */
-#loader { position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:100; display:none; align-items:center; justify-content:center; flex-direction:column; }
-.spinner { width:40px; height:40px; border:3px solid #333; border-top-color:var(--neon); border-radius:50%; animation:spin 1s infinite linear; }
-@keyframes spin { to { transform:rotate(360deg); } }
-#toast { position:fixed; top:80px; left:50%; transform:translateX(-50%); background:rgba(20,20,20,0.9); border:1px solid var(--border); padding:10px 20px; border-radius:30px; font-size:0.8em; display:none; z-index:200; }
-
+    body { background: #000; color: #00f5ff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: monospace; overflow: hidden; }
+    #loader { text-align: center; }
+    .bar { width: 200px; height: 4px; background: #333; margin: 10px auto; border-radius: 2px; overflow: hidden; }
+    .fill { width: 0%; height: 100%; background: #00f5ff; transition: width 0.3s; }
+    #status { font-size: 0.8em; color: #666; margin-top: 5px; }
 </style>
 </head>
 <body>
 
-<div id="toast">Notification</div>
-
-<header>
-    <div class="logo">APEX AI</div>
-    <div class="cloud-status"><div class="dot" id="cloudDot"></div> <span id="cloudText">OFFLINE</span></div>
-</header>
-
-<div id="workspace">
-    <div id="emptyState">
-        <h2 style="font-family:'Orbitron'">STUDIO</h2>
-        <label for="fileInput" class="upload-btn">OPEN IMAGE</label>
-        <input type="file" id="fileInput" accept="image/*" style="display:none">
-    </div>
-    <canvas id="mainCanvas"></canvas>
-</div>
-
-<div id="loader"><div class="spinner"></div><p style="margin-top:10px; color:#666; font-family:'Orbitron'">PROCESSING</p></div>
-
-<div id="controls">
-    <div class="tabs">
-        <div class="tab active" onclick="setTab('ai', this)">✨ AI</div>
-        <div class="tab" onclick="setTab('adjust', this)">🎚 EDIT</div>
-        <div class="tab" onclick="setTab('cloud', this)">☁️ CLOUD</div>
-    </div>
-    
-    <div id="tab-ai" class="panel active">
-        <div class="grid">
-            <div class="card" onclick="runWorker('removeBg')"><i>✂️</i><span>Remove BG</span></div>
-            <div class="card" onclick="runWorker('magic')"><i>🪄</i><span>Magic Eraser</span></div>
-            <div class="card" onclick="runWorker('face')"><i>😀</i><span>Face Fix</span></div>
-            <div class="card" onclick="runWorker('color')"><i>🎨</i><span>Colorize</span></div>
-        </div>
-    </div>
-
-    <div id="tab-adjust" class="panel">
-        <div class="slider-group">
-            <div class="slider-label"><span>EXPOSURE</span><span id="v-exp">0</span></div>
-            <input type="range" id="exp" min="-100" max="100" value="0" oninput="updateVal('exp',this.value)">
-        </div>
-        <div class="slider-group">
-            <div class="slider-label"><span>CONTRAST</span><span id="v-con">0</span></div>
-            <input type="range" id="con" min="-100" max="100" value="0" oninput="updateVal('con',this.value)">
-        </div>
-        <div class="slider-group">
-            <div class="slider-label"><span>ZEISS POP</span><span id="v-pop">0</span></div>
-            <input type="range" id="pop" min="0" max="100" value="0" oninput="updateVal('pop',this.value)">
-        </div>
-    </div>
-
-    <div id="tab-cloud" class="panel">
-        <h4 style="margin-top:0; color:var(--neon)">VERCEL BLOB STORAGE</h4>
-        <p style="font-size:0.8em; color:#666; margin-bottom:15px;">Save your current edit to the cloud securely.</p>
-        <button class="upload-btn" style="width:100%; background:var(--zeiss); color:#fff; border:none;" onclick="saveToCloud()">UPLOAD TO CLOUD</button>
-        <button class="upload-btn" style="width:100%; margin-top:10px;" onclick="renderDownload()">DOWNLOAD LOCAL</button>
-    </div>
+<div id="loader">
+    <h2>APEX AI CLOUD</h2>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div id="status">Initializing...</div>
 </div>
 
 <script>
-// --- APP STATE ---
-const state = { img: new Image(), settings: {exp:0, con:0, pop:0} };
-const canvas = document.getElementById('mainCanvas');
-const ctx = canvas.getContext('2d');
-
-// --- INIT ---
-checkCloud();
-
-document.getElementById('fileInput').addEventListener('change', e => {
-    const f = e.target.files[0];
-    if(!f) return;
-    const r = new FileReader();
-    r.onload = evt => {
-        state.img.src = evt.target.result;
-        state.img.onload = () => {
-            document.getElementById('emptyState').style.display = 'none';
-            document.getElementById('controls').style.display = 'flex';
-            canvas.width = state.img.naturalWidth;
-            canvas.height = state.img.naturalHeight;
-            ctx.drawImage(state.img, 0, 0);
-        }
+    // This Timestamp forces the phone to get NEW code every time
+    const ver = Date.now(); 
+    const update = (w, msg) => {
+        document.getElementById('fill').style.width = w + '%';
+        document.getElementById('status').innerText = msg;
     };
-    r.readAsDataURL(f);
-});
 
-// --- CLOUD FUNCTIONS ---
-async function checkCloud() {
-    // Simple check to see if API responds
-    try {
-        const res = await fetch('/api/upload', { method:'OPTIONS' }); // Just checking
-        document.getElementById('cloudDot').classList.add('online');
-        document.getElementById('cloudText').innerText = "ONLINE";
-    } catch(e) {
-        document.getElementById('cloudText').innerText = "OFFLINE";
-    }
-}
-
-async function saveToCloud() {
-    showLoader(true);
-    canvas.toBlob(async (blob) => {
+    async function boot() {
         try {
-            const res = await fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'x-filename': 'apex_edit_' + Date.now() + '.png' },
-                body: blob
-            });
-            const data = await res.json();
-            showLoader(false);
-            if(data.url) {
-                alert("✅ Saved to Vercel Blob!\nURL: " + data.url);
-            } else {
-                alert("❌ Upload Failed: " + (data.error || 'Unknown error'));
-            }
-        } catch(err) {
-            showLoader(false);
-            alert("❌ Network Error: " + err.message);
+            update(30, 'Loading Interface...');
+            const cssReq = await fetch('style.css?v=' + ver);
+            const cssTxt = await cssReq.text();
+            const style = document.createElement('style');
+            style.textContent = cssTxt;
+            document.head.appendChild(style);
+
+            update(70, 'Loading Engine...');
+            const jsReq = await fetch('app.js?v=' + ver);
+            const jsTxt = await jsReq.text();
+            const script = document.createElement('script');
+            script.textContent = jsTxt;
+            document.body.appendChild(script);
+
+            update(100, 'Starting...');
+            setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 500);
+
+        } catch (e) {
+            document.getElementById('status').innerText = "ERROR: " + e.message;
+            document.getElementById('status').style.color = "red";
         }
-    }, 'image/png');
-}
-
-// --- WORKER ENGINE (Inline for simplicity) ---
-const workerBlob = new Blob([`
-self.onmessage = function(e) {
-    const { mode, buffer, s } = e.data;
-    const data = new Uint8ClampedArray(buffer);
-    const b = 1 + (s.exp/100);
-    const c = (259*(s.con+255))/(255*(259-s.con));
-    const pop = 1 + (s.pop/200);
-
-    for(let i=0; i<data.length; i+=4) {
-        let r = data[i], g = data[i+1], bl = data[i+2];
-
-        // 1. AI MODES
-        if(mode === 'removeBg') {
-            if(r>240 && g>240 && bl>240) data[i+3] = 0; 
-        }
-        if(mode === 'color') {
-            const avg = (r+g+bl)/3; r=avg+40; g=avg+20; bl=avg;
-        }
-
-        // 2. ADJUSTMENTS
-        r *= b; g *= b; bl *= b;
-        r = c*(r-128)*pop + 128;
-        g = c*(g-128)*pop + 128;
-        bl = c*(bl-128)*pop + 128;
-
-        data[i] = r; data[i+1] = g; data[i+2] = bl;
     }
-    self.postMessage({buffer:data.buffer}, [data.buffer]);
-}
-`], {type:'text/javascript'});
-
-const worker = new Worker(URL.createObjectURL(workerBlob));
-worker.onmessage = e => {
-    ctx.putImageData(new ImageData(new Uint8ClampedArray(e.data.buffer), canvas.width, canvas.height), 0, 0);
-    showLoader(false);
-};
-
-function runWorker(mode) {
-    showLoader(true);
-    const d = ctx.getImageData(0,0,canvas.width, canvas.height);
-    worker.postMessage({mode:mode, buffer:d.data.buffer, s:state.settings}, [d.data.buffer]);
-}
-
-// --- UI HELPERS ---
-function setTab(id, el) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab-'+id).classList.add('active');
-    el.classList.add('active');
-}
-function updateVal(k, v) { 
-    state.settings[k] = parseInt(v); 
-    document.getElementById('v-'+k).innerText = v; 
-}
-function showLoader(b) { document.getElementById('loader').style.display = b ? 'flex' : 'none'; }
-function renderDownload() {
-    const link = document.createElement('a');
-    link.download = 'APEX_Local.png';
-    link.href = canvas.toDataURL();
-    link.click();
-}
+    boot();
 </script>
 </body>
 </html>
